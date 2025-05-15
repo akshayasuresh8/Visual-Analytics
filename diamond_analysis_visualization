@@ -125,16 +125,6 @@ Key Findings from Diamond Dataset Analysis:
    - Colorless (D) diamonds command premium pricing across all sizes
 "
 
-# Questions for further analysis
-questions <- "
-Questions for Further Analysis:
-
-1. What factors most strongly predict diamond prices? A multivariate analysis would help.
-2. Why do we see gaps in certain carat ranges? Is this a sampling issue or market phenomenon?
-3. How have diamond prices changed over time? (Would require temporal data not in this dataset)
-4. Are there regional variations in diamond preferences for cut, color, and clarity?
-5. How do lab-grown diamonds compare in these attributes to natural diamonds?
-"
 
 # Printing and saving
 cat(findings)
