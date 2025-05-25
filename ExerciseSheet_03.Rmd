@@ -1,0 +1,310 @@
+---
+title: "Exercise Sheet 3"
+fontsize: 11pt
+header-includes: \usepackage[german]{babel}
+output:
+  html_document: default
+  pdf_document:
+    highlight: tango
+fig_caption: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, # -> Sollen Code Chunks im gerenderten Dokument angezeigt werden?
+                      eval = TRUE, # -> Sollen R Code Chunks ausgeführt werden?
+                      warning = FALSE, # -> Warnungen sollten nur am Ende zum Rendern auf FALSE gesetzt werden
+                      message = FALSE) # -> Hinweise sollten nur am Ende zum Rendern auf FALSE gesetzt werden
+```
+
+```{r}
+# Set up libraries (make sure they are installed, first)
+library(tidyverse)
+library(stringr)
+library(magrittr)
+library(cluster)
+library(dbscan)
+
+```
+
+1. A school would like to group its pupils according to their performance at two intermediate examinations. It is assumed that there are at least 2 clusters of pupils. Load the file `clustering-student-mat.csv` from the exercise sheet's ZIP archive. The file contains for each of the two exams the number of points scored for a total of 395 students.  
+Perform a $K$-means-Clustering for each $k\in \{2,3,\ldots,8\}$. Display the cluster assignments of the points in a scatter plot. (You may use `kmeans` from package `cluster`/`stats`.)
+
+```{r}
+# Solution of task 1...
+student <- read_csv("clustering-student-mat.csv")
+
+# list to store all clustering results
+kmeans_results <- list()
+
+# Perform K-means for k = 2 to 8
+for (k in 2:8) {
+  set.seed(123)  # For reproducibility
+  kmeans_results[[k-1]] <- kmeans(student[, c("Exam1", "Exam2")], centers = k, nstart = 25)
+}
+
+# Create scatter plots for each k value
+library(ggplot2)
+
+# Function to create a scatter plot for a given k value
+plot_kmeans_clusters <- function(k) {
+  # Get the clustering result
+  result <- kmeans_results[[k-1]]
+  
+  # Create a data frame with the original data and cluster assignments
+  plot_data <- data.frame(
+    Exam1 = student$Exam1,
+    Exam2 = student$Exam2,
+    Cluster = as.factor(result$cluster)
+  )
+  
+  # Create the scatter plot
+  ggplot(plot_data, aes(x = Exam1, y = Exam2, color = Cluster)) +
+    geom_point(size = 3, alpha = 0.7) +
+    geom_point(data = as.data.frame(result$centers), 
+               aes(x = Exam1, y = Exam2), 
+               size = 5, shape = 8, color = "black") +
+    labs(title = paste("K-means Clustering (k =", k, ")"),
+         x = "Exam 1 Score",
+         y = "Exam 2 Score") +
+    theme_minimal() +
+    scale_color_brewer(palette = "Set1")
+}
+
+# Generate plots for each k value
+plots <- lapply(2:8, plot_kmeans_clusters)
+
+for (plot in plots) {
+  print(plot)
+}
+
+```
+
+2. Aside from distance-based clustering models, there are also density-based models. However, they depend on input parameters, too, and the parameters can have a strong influence on the outcome. Based on the data from task 1, apply DBSCAN for each $eps\in \{1,5,10\}$, with $eps$ representing the epsilon threshold for density-connectivity. As the number of minimum points required in the $eps$ neighborhood of core points use $minPoints = 4$. Display the cluster assignments of the points in a scatter plot. (You may use `dbscan` from package `dbscan`.)
+
+```{r}
+# Solution of task 2...
+# Load required library
+library(dbscan)
+
+# Create a list to store DBSCAN results
+dbscan_results <- list()
+
+# Epsilon values to test
+eps_values <- c(1, 5, 10)
+
+# Perform DBSCAN for each epsilon value with minPts = 4
+for (i in 1:length(eps_values)) {
+  eps <- eps_values[i]
+  dbscan_results[[i]] <- dbscan(student[, c("Exam1", "Exam2")], eps = eps, minPts = 4)
+}
+
+# Create scatter plots for each epsilon value
+library(ggplot2)
+
+# Function to create a scatter plot for a given epsilon value
+plot_dbscan_clusters <- function(i) {
+  # Get the corresponding DBSCAN result
+  result <- dbscan_results[[i]]
+  eps <- eps_values[i]
+  
+  # Create a data frame with the original data and cluster assignments
+  plot_data <- data.frame(
+    Exam1 = student$Exam1,
+    Exam2 = student$Exam2,
+    Cluster = as.factor(result$cluster)
+  )
+  
+  # In DBSCAN, cluster 0 represents noise points
+  # Let's make these points smaller and with a different shape
+  
+  # Create the scatter plot
+  ggplot(plot_data, aes(x = Exam1, y = Exam2, color = Cluster)) +
+    geom_point(data = subset(plot_data, Cluster != "0"), 
+               size = 3, alpha = 0.7) +
+    geom_point(data = subset(plot_data, Cluster == "0"), 
+               size = 2, shape = 4, color = "black") +  # Noise points as black X's
+    labs(title = paste("DBSCAN Clustering (eps =", eps, ", minPts = 4)"),
+         subtitle = paste("Number of clusters:", max(result$cluster)),
+         x = "Exam 1 Score",
+         y = "Exam 2 Score") +
+    theme_minimal() +
+    scale_color_brewer(palette = "Set1") +
+    guides(color = guide_legend(title = "Cluster", 
+                               override.aes = list(size = 3)))
+}
+
+# Generate plots for each epsilon value
+dbscan_plots <- lapply(1:length(eps_values), plot_dbscan_clusters)
+
+# Display plots
+for (plot in dbscan_plots) {
+  print(plot)
+}
+```
+
+3. For the clustering results from task 1 and 2, use the silhouette coefficient to find the optimal cluster parameters (i.e., for $K$-means the number of clusters $K$, and for DBSCAN the epsilon threshold for density-connectivity $eps$). (You may use `silhouette` from package `cluster`.)
+
+```{r}
+# Solution of task 3...
+# Load required library
+library(cluster)
+
+# Part 1: Silhouette analysis for K-means
+
+kmeans_silhouette_avg <- numeric(7)  # To store average silhouette width for k=2 to k=8
+
+for (k in 2:8) {
+  # Perform K-means clustering
+  set.seed(123)
+  km <- kmeans(student[, c("Exam1", "Exam2")], centers = k, nstart = 25)
+  
+  # Calculate silhouette
+  sil <- silhouette(km$cluster, dist(student[, c("Exam1", "Exam2")]))
+  
+  # Store average silhouette width
+  kmeans_silhouette_avg[k-1] <- mean(sil[, "sil_width"])
+}
+
+# Find optimal k
+optimal_k <- which.max(kmeans_silhouette_avg) + 1
+cat("Optimal number of clusters for K-means based on silhouette coefficient:", optimal_k, "\n")
+cat("Silhouette values for k=2 to k=8:", kmeans_silhouette_avg, "\n")
+```
+
+
+```{r}
+# Plot silhouette coefficients for K-means
+library(ggplot2)
+kmeans_sil_data <- data.frame(k = 2:8, avg_silhouette = kmeans_silhouette_avg)
+
+kmeans_sil_plot <- ggplot(kmeans_sil_data, aes(x = k, y = avg_silhouette)) +
+  geom_line() +
+  geom_point(size = 3) +
+  geom_point(data = kmeans_sil_data[which.max(kmeans_silhouette_avg),], 
+             color = "red", size = 4) +
+  labs(title = "Average Silhouette Width for K-means",
+       subtitle = paste("Optimal k =", optimal_k),
+       x = "Number of Clusters (k)",
+       y = "Average Silhouette Width") +
+  theme_minimal() +
+  scale_x_continuous(breaks = 2:8)
+
+print(kmeans_sil_plot)
+```
+
+
+```{r}
+# Part 2: Silhouette analysis for DBSCAN
+eps_values <- c(1, 5, 10)
+dbscan_silhouette_avg <- numeric(length(eps_values))
+
+for (i in 1:length(eps_values)) {
+  # Run DBSCAN with current epsilon
+  db <- dbscan(student[, c("Exam1", "Exam2")], eps = eps_values[i], minPts = 4)
+  
+  # Check if we have at least 2 real clusters
+  if (length(unique(db$cluster[db$cluster > 0])) >= 2) {
+    # Get just the non-noise points
+    non_noise_idx <- which(db$cluster > 0)
+    
+    # Calculate silhouette score (excluding noise points)
+    sil <- silhouette(db$cluster[non_noise_idx], 
+                     dist(student[non_noise_idx, c("Exam1", "Exam2")]))
+    
+    # Store the average score
+    dbscan_silhouette_avg[i] <- mean(sil[, "sil_width"])
+  } else {
+    dbscan_silhouette_avg[i] <- NA
+  }
+}
+
+# Find and display the best epsilon value
+if (all(is.na(dbscan_silhouette_avg))) {
+  cat("No valid silhouette scores found.\n")
+} else {
+  optimal_eps_idx <- which.max(dbscan_silhouette_avg)
+  optimal_eps <- eps_values[optimal_eps_idx]
+  
+  cat("Best epsilon value:", optimal_eps, 
+      "\nSilhouette scores:", dbscan_silhouette_avg, "\n")
+  
+  # Create and display plot
+  plot_data <- data.frame(eps = eps_values, score = dbscan_silhouette_avg)
+  
+  ggplot(plot_data, aes(x = eps, y = score)) +
+    geom_line() +
+    geom_point(size = 3) +
+    geom_point(data = plot_data[optimal_eps_idx,], color = "red", size = 4) +
+    labs(title = "DBSCAN Silhouette Analysis",
+         subtitle = paste("Optimal epsilon =", optimal_eps),
+         x = "Epsilon", y = "Silhouette Score") +
+    theme_minimal() +
+    scale_x_continuous(breaks = eps_values)
+}
+
+```
+
+
+4. The following distance matrix is given. Perform agglomerative hierarchical clustering with  _single_ und _complete_ linkage. Display the result in a dendrogram. The dendrogram should represent the order in which the points are joined. (You may use `hclust` from package `cluster`/`stats`.)
+
+```{r}
+dm <- tribble(~p1,~p2,~p3,~p4,~p5,
+              0.00, 0.02, 0.90, 0.36, 0.53,
+              0.02, 0.00, 0.65, 0.15, 0.24,
+              0.90, 0.65, 0.00, 0.59, 0.45,
+              0.36, 0.15, 0.59, 0.00, 0.56,
+              0.53, 0.24, 0.45, 0.56, 0.00) %>% as.matrix()
+rownames(dm) <- letters[1:5]
+colnames(dm) <- letters[1:5]
+knitr::kable(dm)
+```
+
+```{r}
+# Solution of task 4...
+# Convert to dist object (hierarchical clustering functions expect this format)
+dm_dist <- as.dist(dm)
+
+# Perform hierarchical clustering with single linkage
+hc_single <- hclust(dm_dist, method = "single")
+
+# Perform hierarchical clustering with complete linkage
+hc_complete <- hclust(dm_dist, method = "complete")
+
+# Set up plotting area for the two dendrograms
+par(mfrow = c(1, 2))
+
+# Plot dendrogram for single linkage
+plot(hc_single, 
+     main = "Hierarchical Clustering: Single Linkage",
+     sub = "Nearest Neighbor",
+     xlab = "Points",
+     ylab = "Distance",
+     hang = -1,     # Align leaf labels
+     cex = 0.9)     # Text size
+
+# Plot dendrogram for complete linkage
+plot(hc_complete, 
+     main = "Hierarchical Clustering: Complete Linkage",
+     sub = "Furthest Neighbor",
+     xlab = "Points",
+     ylab = "Distance",
+     hang = -1,     # Align leaf labels
+     cex = 0.9)     # Text size
+
+# Reset plotting area
+par(mfrow = c(1, 1))
+
+# To get more detailed information about the clustering process
+cat("Single Linkage Clustering Order:\n")
+print(hc_single$merge)
+cat("\nSingle Linkage Heights (distances at which clusters are joined):\n")
+print(hc_single$height)
+
+cat("\nComplete Linkage Clustering Order:\n")
+print(hc_complete$merge)
+cat("\nComplete Linkage Heights (distances at which clusters are joined):\n")
+print(hc_complete$height)
+
+```
+
+------
