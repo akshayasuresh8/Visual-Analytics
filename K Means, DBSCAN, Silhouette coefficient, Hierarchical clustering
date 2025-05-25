@@ -1,20 +1,4 @@
----
-title: "Exercise Sheet 3"
-fontsize: 11pt
-header-includes: \usepackage[german]{babel}
-output:
-  html_document: default
-  pdf_document:
-    highlight: tango
-fig_caption: yes
----
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, # -> Sollen Code Chunks im gerenderten Dokument angezeigt werden?
-                      eval = TRUE, # -> Sollen R Code Chunks ausgeführt werden?
-                      warning = FALSE, # -> Warnungen sollten nur am Ende zum Rendern auf FALSE gesetzt werden
-                      message = FALSE) # -> Hinweise sollten nur am Ende zum Rendern auf FALSE gesetzt werden
-```
 
 ```{r}
 # Set up libraries (make sure they are installed, first)
