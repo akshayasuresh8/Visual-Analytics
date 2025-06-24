@@ -1,0 +1,234 @@
+---
+title: "Exercise Sheet 6"
+fontsize: 11pt
+header-includes: \usepackage[german]{babel}
+output:
+  html_document: default
+  pdf_document:
+    highlight: tango
+fig_caption: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, # -> Sollen Code Chunks im gerenderten Dokument angezeigt werden?
+                      eval = TRUE, # -> Sollen R Code Chunks ausgeführt werden?
+                      warning = FALSE, # -> Warnungen sollten nur am Ende zum Rendern auf FALSE gesetzt werden
+                      message = FALSE) # -> Hinweise sollten nur am Ende zum Rendern auf FALSE gesetzt werden
+```
+
+```{r}
+# Set up libraries (make sure they are installed, first)
+library(tidyverse)
+library(biclust)
+library(reshape)
+library(ggplot2) 
+```
+
+1. The built-in data set "trees" contains measurements of the girth, height and volume of timber in 31 felled black cherry trees. Use the function `data` to load the data set. Then, create a scatterplot matrix to determine visually between which of the three variables the strongest correlation seems to occur. To investigate whether your assumption was correct, plot the pairwise Pearson correlation coefficient as a number for each pair of variables in the upper diagonal of the scatterplot matrix.  
+To plot the matrix you may refer to the function `pairs`.
+
+```{r}
+# Solution of task 1...
+
+data(trees)
+
+# Function to calculate and print Pearson correlation coefficient
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...) {
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  r <- abs(cor(x, y, method = "pearson")) # Calculate Pearson correlation
+  txt <- format(c(r, 0.123456789), digits = digits)[1]
+  txt <- paste0(prefix, txt)
+  if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+  text(0.5, 0.5, txt, cex = cex.cor * r) # Scale text size by correlation
+}
+
+# Create a scatterplot matrix 
+pairs(trees,
+      upper.panel = panel.cor, # Use the custom function 
+      lower.panel = panel.smooth, # Use a smoothed line 
+      main = "Scatterplot Matrix of Trees Dataset with Pearson Correlation")
+
+# Print the correlation matrix separately for clarity
+cat("Pearson Correlation Matrix:\n")
+print(cor(trees, method = "pearson"))
+
+```
+BICLUSTERING- SIZE 2 EXAM QUESTION (PROBLEM)
+CLUSTERING WILL BE DONE COLOUMN VISE(ALL PEOPLE WHO PLAY GTA WILL BE ONE CLUSTER)
+
+
+2. Below you can find a data table that shows which students are playing which video games in their free time. Determine whether there are clusters of students playing the same games by using Biclustering (you may refer to the library `biclust`). Display two Heatmaps to inspect the results: The first heatmap should display the original data, i.e., which students play which games. The second heatmap should display which table cell belongs to which bicluster by giving the cells corresponding fill colors. Which visual problem occurs in the second heatmap?  
+Note: If you use `biclust`, you can extract the associations of the games and student names to the different clusters from the result object via `result_obj@NumberxCol` and `result_obj@RowxNumber`.
+
+```{r}
+# Solution of task 2...
+
+if (!requireNamespace("biclust", quietly = TRUE)) {
+  install.packages("biclust")
+}
+library(biclust)
+
+# Create bipartite graph data (as provided by the user)
+game_matrix <- matrix(c(1, 0, 0, 1, 1, 1, 0,
+                        0, 1, 1, 0, 1, 0, 0,
+                        0, 0, 0, 0, 1, 0, 1,
+                        1, 1, 0, 0, 0, 0, 0,
+                        0, 0, 1, 0, 0, 0, 1,
+                        0, 1, 0, 1, 1, 0, 0,
+                        0, 0, 0, 0, 0, 1, 0),
+                        nrow = 7,
+                        ncol = 7,
+                        byrow = TRUE)
+colnames(game_matrix) <- c("The Witcher 3","Terraria","Hollow Knight","Cities: Skylines","GTA V","Divinity","XCOM 2")
+rownames(game_matrix) <- c("Tarek", "Sam", "Ebele", "Kim", "Ali", "Aiko", "Parvati")
+
+game_df <- as.data.frame(game_matrix)
+game_df$Student <- rownames(game_df)
+game_melted <- melt(game_df, id.vars = "Student", variable_name = "Game")
+game_melted$value <- factor(game_melted$value, levels = c(0, 1), labels = c("No", "Yes"))
+
+# Heatmap of original data
+ggplot(game_melted, aes(x = Game, y = Student, fill = value)) +
+  geom_tile(color = "white", linewidth = 1) +
+  scale_fill_manual(values = c("No" = "lightgray", "Yes" = "darkblue"), name = "Plays Game") +
+  labs(title = "Original Game Play Matrix", x = "Game", y = "Student") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Perform Biclustering
+# Using BCBimax algorithm (Binary data)
+bicluster_result <- biclust(game_matrix, method = BCBimax(), number = 5) # Trying to find up to 5 biclusters
+
+# Prepare data for the second heatmap (bicluster assignment)
+bicluster_df <- expand.grid(
+  Student = rownames(game_matrix),
+  Game = colnames(game_matrix)
+)
+bicluster_df$Bicluster <- NA
+
+# Iterate through biclusters and assign a bicluster ID
+for (i in 1:bicluster_result@Number) {
+  rows_in_bicluster <- bicluster_result@RowxNumber[, i]
+  cols_in_bicluster <- bicluster_result@NumberxCol[i, ]
+
+  students_in_bicluster <- rownames(game_matrix)[rows_in_bicluster]
+  games_in_bicluster <- colnames(game_matrix)[cols_in_bicluster]
+
+  # Assign bicluster ID to the corresponding cells
+  bicluster_df$Bicluster[
+    bicluster_df$Student %in% students_in_bicluster &
+    bicluster_df$Game %in% games_in_bicluster
+  ] <- i
+}
+
+# Convert Bicluster column to factor for discrete coloring
+bicluster_df$Bicluster <- factor(bicluster_df$Bicluster)
+
+# Second heatmap: Bicluster assignment
+ggplot(bicluster_df, aes(x = Game, y = Student, fill = Bicluster)) +
+  geom_tile(color = "white", linewidth = 1) +
+  scale_fill_viridis_d(na.value = "lightgray", name = "Bicluster ID") + # Use a discrete color scale
+  labs(title = "Bicluster Assignment Heatmap", x = "Game", y = "Student") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+APPLY TRANSPARENCY
+INC / DEC THE BIN SIZE 
+WHAT HAPPENS WHEN THE BIN SIZE IS INC/DEC? - WHAT IS BETTER TO VIEW PEAKS ETC.?
+
+3. For the 2D point data set given below, determine visually how many modes, i.e., peaks, the distribution of the points has. To do so, draw a standard scatterplot as well as a Hexbin scatterplot. Which one allows to answer the question better? How does changing the visual parameters help you in answering the question?  
+For plotting you may refer to the package `hexbin`.
+```{r}
+# Define data
+# Set seed
+set.seed(48)
+get_rand <- function(d) {
+  return(rnorm(1, mean = d, sd = 1))
+}
+m <- round(runif(50000, 0, 1)) * 2 + 1
+point_data = tibble(x = sapply(m, get_rand), y = sapply(m, get_rand))
+
+# --- 1. Standard Scatterplot ---
+cat("--- Standard Scatterplot ---\n")
+# Creating a standard scatterplot of the 2D point data
+# With 50,000 points, overplotting will be a significant issue.
+p1 <- ggplot(point_data, aes(x = x, y = y)) +
+  geom_point(alpha = 0.1) + # Use transparency to mitigate overplotting slightly
+  labs(title = "Standard Scatterplot of 2D Point Data",
+       subtitle = "Transparency (alpha=0.1) applied due to high density",
+       x = "X-coordinate",
+       y = "Y-coordinate") +
+  theme_minimal()
+
+print(p1)
+
+cat("\nObservation from Standard Scatterplot:\n")
+cat("Due to the large number of points (50,000), there is severe overplotting.\n")
+cat("The individual points are indistinguishable in dense areas, making it very difficult\n")
+cat("to visually determine the number of modes (peaks) in the distribution. It appears as\n")
+cat("a large, dark blob where points are most concentrated.\n")
+
+
+# --- 2. Hexbin Scatterplot ---
+cat("\n--- Hexbin Scatterplot (Default bins) ---\n")
+# Creating a Hexbin scatterplot using geom_hex
+# This aggregates points into hexagonal bins and colors them by density.
+p2_default <- ggplot(point_data, aes(x = x, y = y)) +
+  geom_hex() + # Default number of bins
+  scale_fill_viridis_c() + # Use a color gradient (e.g., viridis) to show density
+  labs(title = "Hexbin Scatterplot of 2D Point Data (Default Bins)",
+       subtitle = "Color indicates point density",
+       x = "X-coordinate",
+       y = "Y-coordinate") +
+  theme_minimal()
+
+print(p2_default)
+
+cat("\nObservation from Hexbin Scatterplot (Default Bins):\n")
+cat("The Hexbin plot significantly improves the visualization of density.\n")
+cat("With default binning, two main modes (peaks of density) become somewhat apparent,\n")
+cat("located around the coordinates (1,1) and (3,3).\n")
+
+
+cat("\n--- Hexbin Scatterplot (Adjusted bins = 50) ---\n")
+# Creating a Hexbin scatterplot with adjusted bins for finer granularity
+# More bins will give a more detailed view of the density distribution.
+p2_adjusted <- ggplot(point_data, aes(x = x, y = y)) +
+  geom_hex(bins = 50) + # Increased number of bins for finer detail
+  scale_fill_viridis_c() +
+  labs(title = "Hexbin Scatterplot of 2D Point Data (Bins = 50)",
+       subtitle = "Finer granularity reveals more detail in density",
+       x = "X-coordinate",
+       y = "Y-coordinate") +
+  theme_minimal()
+
+print(p2_adjusted)
+
+cat("\nObservation from Hexbin Scatterplot (Adjusted bins):\n")
+cat("By increasing the 'bins' parameter to 50, the granularity of the density estimation increases.\n")
+cat("This makes the two distinct modes (peaks) around (1,1) and (3,3) much clearer and sharper.\n")
+cat("It also helps to visualize the spread and shape of the distribution around these modes.\n")
+
+
+# --- Answering the Questions ---
+cat("\n--- Conclusion ---\n")
+cat("Which one allows to answer the question better?\n")
+cat("The **Hexbin scatterplot** allows to answer the question of how many modes the distribution has much better than the standard scatterplot.\n")
+cat("The standard scatterplot suffers from severe overplotting, rendering dense areas as indistinct blobs.\n")
+cat("The Hexbin plot, by aggregating points into bins and coloring them by density, effectively visualizes where the points are most concentrated.\n")
+cat("From the Hexbin plots, it is visually clear that the distribution has **two modes** (peaks of density),\n")
+cat("located approximately around (1,1) and (3,3).\n")
+
+cat("\nHow does changing the visual parameters help you in answering the question?\n")
+cat("Changing the 'bins' parameter in the `geom_hex` function significantly helps in answering the question:\n")
+cat("- **Fewer bins** (larger hexagons): Provide a very coarse view of density. Might obscure subtle peaks or merge close peaks into one.\n")
+cat("- **More bins** (smaller hexagons): Provide a finer, more detailed view of density. This allows for better discernment of distinct peaks and the shape of the distribution within and around these peaks.\n")
+cat("For this specific dataset, increasing the number of bins (e.g., from default to 50) made the two distinct modes much more apparent and easier to identify, as the higher resolution of the bins allowed the underlying bimodal structure to emerge clearly.\n")
+
+```
+
+
+
+------
